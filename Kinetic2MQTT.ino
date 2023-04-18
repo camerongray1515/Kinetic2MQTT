@@ -224,7 +224,7 @@ void loop() {
 
 // Publish [value] to MQTT at topic: [mqttTopicValue]/[topicLevel1]/[topicLevel2]
 void publishMqtt(char topicLevel1[], char topicLevel2[], char value[]) {
-  char compiledTopic[strlen(mqttTopicValue) + strlen(topicLevel1) + strlen(topicLevel2) + 1] = "";
+  char compiledTopic[strlen(mqttTopicValue) + strlen(topicLevel1) + strlen(topicLevel2) + 3] = "";
   strcat(compiledTopic, mqttTopicValue);
   strcat(compiledTopic, "/");
   strcat(compiledTopic, topicLevel1);
