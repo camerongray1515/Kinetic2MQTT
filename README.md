@@ -22,7 +22,7 @@ Also bear in mind the following:
 * Connecting to MQTT brokers that require SSL or a username/password is not currently implemented
 * This has only been tested with the following switches: Quinetic QU WS1S, Quinetic QU GDMK.  Other switches may or may not work.
 
-## Requirements
+## Requirements
 
 The following libraries are used by Kinetic2MQTT.  They should be installed in your Arduino development environment prior to building:
 * IotWebConf version 3.2.1: https://github.com/prampec/IotWebConf
