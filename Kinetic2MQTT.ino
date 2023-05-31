@@ -175,6 +175,9 @@ void loop() {
           char switchID[5] = "";
           bytesToHexString(byteArr, 2, switchID);
 
+          char messagefull[3] = "";
+          byteToHexString(byteArr[2],messagefull);
+
           // First bit of third byte indicates press/release
           // Bit shift and compare the result
           char buttonAction[] = "release";
@@ -188,7 +191,9 @@ void loop() {
             Serial.print("Button pressed: ");
             Serial.print(switchID);
             Serial.print(", action: ");
-            Serial.println(buttonAction);
+            Serial.print(buttonAction);
+            Serial.print(", value: ");
+            Serial.println(messagefull);
 
             // Send the RSSI and button action message over MQTT
             char topicLevel1[] = "status";
@@ -200,13 +205,16 @@ void loop() {
             strcpy(topicLevel1, "action");
             publishMqtt(topicLevel1, switchID, buttonAction);
 
+            strcpy(topicLevel1, "raw");
+            publishMqtt(topicLevel1, switchID, messagefull);
+
             strcpy(lastSentButtonAction, buttonAction);
             strcpy(lastSentSwitchID, switchID);
             lastSentMillis = millis();
           }
         } else {
           // Message CRC was invalid
-          Serial.println("Error: CRC Mismatch!");
+          //Serial.println("Error: CRC Mismatch!");
         }
       }
     } else {
@@ -269,6 +277,15 @@ void bytesToHexString(byte array[], unsigned int len, char buffer[]) {
         buffer[i*2+1] = nib2  < 0xA ? '0' + nib2  : 'A' + nib2  - 0xA;
     }
     buffer[len*2] = '\0';
+}
+
+// Convert array of bytes into a string containing the HEX representation of the array
+void byteToHexString(byte mybyte, char buffer[]) {
+    byte nib1 = (mybyte >> 4) & 0x0F;
+    byte nib2 = (mybyte >> 0) & 0x0F;
+    buffer[0] = nib1  < 0xA ? '0' + nib1  : 'A' + nib1  - 0xA;
+    buffer[1] = nib2  < 0xA ? '0' + nib2  : 'A' + nib2  - 0xA;
+    buffer[2] = '\0';
 }
 
 // If configuration is saved in IOTWebConf, reboot the device
