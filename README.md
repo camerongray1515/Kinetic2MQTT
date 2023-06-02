@@ -19,7 +19,7 @@ This project is still very much a proof of concept with very little testing and 
 should be familar with Arduino and ESP8266 development to be able to resolve any issues that occur.
 
 Also bear in mind the following:
-* Connecting to MQTT brokers that require SSL or a username/password is --not currently-- now implemented
+* Connecting to MQTT brokers that require SSL or a username/password is ~~not currently~~ **now** implemented
 * This has only been tested with the following single-gang switches: Quinetic QU WS1S, Quinetic QU GDMK.  Other switches may or 
 may not work.
 * This has also been tested with the following two-gang switches : Quinetic QUDGMK R.
