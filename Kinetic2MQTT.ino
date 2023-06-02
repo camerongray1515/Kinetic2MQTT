@@ -20,7 +20,7 @@ using namespace ace_crc::crc16ccitt_byte;
 
 // IotWebConf Config
 #define CONFIG_PARAM_MAX_LEN 128
-#define CONFIG_VERSION "mqt2"
+#define CONFIG_VERSION "mqt3"
 #define CONFIG_PIN 4 // D2
 #define STATUS_PIN 16 // D0
 
@@ -47,15 +47,15 @@ WiFiClient net;
 PubSubClient mqttClient(net);
 
 char mqttServerValue[CONFIG_PARAM_MAX_LEN];
-// char mqttUserNameValue[CONFIG_PARAM_MAX_LEN];
-// char mqttUserPasswordValue[CONFIG_PARAM_MAX_LEN];
+char mqttUserNameValue[CONFIG_PARAM_MAX_LEN];
+char mqttUserPasswordValue[CONFIG_PARAM_MAX_LEN];
 char mqttTopicValue[CONFIG_PARAM_MAX_LEN];
 
 IotWebConf iotWebConf(deviceName, &dnsServer, &server, apPassword, CONFIG_VERSION);
 IotWebConfParameterGroup mqttGroup = IotWebConfParameterGroup("mqtt", "MQTT configuration");
 IotWebConfTextParameter mqttServerParam = IotWebConfTextParameter("MQTT server", "mqttServer", mqttServerValue, CONFIG_PARAM_MAX_LEN);
-// IotWebConfTextParameter mqttUserNameParam = IotWebConfTextParameter("MQTT user", "mqttUser", mqttUserNameValue, CONFIG_PARAM_MAX_LEN);
-// IotWebConfPasswordParameter mqttUserPasswordParam = IotWebConfPasswordParameter("MQTT password", "mqttPass", mqttUserPasswordValue, CONFIG_PARAM_MAX_LEN);
+IotWebConfTextParameter mqttUserNameParam = IotWebConfTextParameter("MQTT user", "mqttUser", mqttUserNameValue, CONFIG_PARAM_MAX_LEN);
+IotWebConfPasswordParameter mqttUserPasswordParam = IotWebConfPasswordParameter("MQTT password", "mqttPass", mqttUserPasswordValue, CONFIG_PARAM_MAX_LEN);
 IotWebConfTextParameter mqttTopicParam = IotWebConfTextParameter("MQTT Topic", "mqttTopic", mqttTopicValue, CONFIG_PARAM_MAX_LEN);
 
 bool needReset = false;
@@ -70,7 +70,6 @@ void setup() {
   pinMode(CONFIG_PIN, INPUT_PULLUP);
 
   // Initialise and configure CC1101
-
   Serial.print("Initializing Radio... ");
 
   int state = radio.begin(CARRIER_FREQUENCY, BIT_RATE, FREQUENCY_DEVIATION, RX_BANDWIDTH, OUTPUT_POWER, PREAMBLE_LENGTH);
@@ -95,8 +94,8 @@ void setup() {
 
   Serial.println("Initialising IotWebConf... ");
   mqttGroup.addItem(&mqttServerParam);
-  // mqttGroup.addItem(&mqttUserNameParam);
-  // mqttGroup.addItem(&mqttUserPasswordParam);
+  mqttGroup.addItem(&mqttUserNameParam);
+  mqttGroup.addItem(&mqttUserPasswordParam);
   mqttGroup.addItem(&mqttTopicParam);
 
   iotWebConf.setStatusPin(STATUS_PIN);
@@ -108,8 +107,8 @@ void setup() {
   bool validConfig = iotWebConf.init();
   if (!validConfig) {
     mqttServerValue[0] = '\0';
-    // mqttUserNameValue[0] = '\0';
-    // mqttUserPasswordValue[0] = '\0';
+    mqttUserNameValue[0] = '\0';
+    mqttUserPasswordValue[0] = '\0';
     mqttTopicValue[0] = '\0';
   }
 
@@ -121,7 +120,6 @@ void setup() {
   server.onNotFound([](){ iotWebConf.handleNotFound(); });
 
   // Initialise MQTT
-
   mqttClient.setServer(mqttServerValue, 1883);
 }
 
@@ -156,7 +154,6 @@ void loop() {
     byte byteArr[PACKET_LENGTH];
     int state = radio.readData(byteArr, PACKET_LENGTH);
     
-
     if (state == RADIOLIB_ERR_NONE) {
       // Only process the message if RSSI is high enough, this prevents uncessary calculating CRC for noise
       if (radio.getRSSI() > MIN_RSSI) {
@@ -175,6 +172,12 @@ void loop() {
           char switchID[5] = "";
           bytesToHexString(byteArr, 2, switchID);
 
+          char buttonState[3] = "";
+          byteToHexString(byteArr[2],buttonState);
+
+          char rssiString[20] = "";
+          sprintf(rssiString, "%f dBm", radio.getRSSI());
+
           // First bit of third byte indicates press/release
           // Bit shift and compare the result
           char buttonAction[] = "release";
@@ -188,18 +191,12 @@ void loop() {
             Serial.print("Button pressed: ");
             Serial.print(switchID);
             Serial.print(", action: ");
-            Serial.println(buttonAction);
+            Serial.print(buttonAction);
+            Serial.print(", value: ");
+            Serial.println(buttonState);
 
-            // Send the RSSI and button action message over MQTT
-            char topicLevel1[] = "status";
-            char topicLevel2[] = "rssi";
-            char messageValue[20] = "";
-            sprintf(messageValue, "%f dBm", radio.getRSSI());
-            publishMqtt(topicLevel1, topicLevel2, messageValue);
-
-            strcpy(topicLevel1, "action");
-            publishMqtt(topicLevel1, switchID, buttonAction);
-
+            publishFullMessage(switchID, buttonState, rssiString);  // usertopic/switchid/state 
+            
             strcpy(lastSentButtonAction, buttonAction);
             strcpy(lastSentSwitchID, switchID);
             lastSentMillis = millis();
@@ -223,34 +220,51 @@ void loop() {
 }
 
 // Publish [value] to MQTT at topic: [mqttTopicValue]/[topicLevel1]/[topicLevel2]
-void publishMqtt(char topicLevel1[], char topicLevel2[], char value[]) {
-  char compiledTopic[strlen(mqttTopicValue) + strlen(topicLevel1) + strlen(topicLevel2) + 3] = "";
+void publishMqtt(char value[]) {
+  char compiledTopic[strlen(mqttTopicValue) + 7] = "";
   strcat(compiledTopic, mqttTopicValue);
-  strcat(compiledTopic, "/");
-  strcat(compiledTopic, topicLevel1);
-  strcat(compiledTopic, "/");
-  strcat(compiledTopic, topicLevel2);
+  strcat(compiledTopic, "/system");
   
   mqttClient.publish(compiledTopic, value);
+}
+
+void publishFullMessage(char switchIdent[], char value[], char rssi[]) {
+  char compiledTopic[strlen(mqttTopicValue) + strlen(switchIdent) + 9] = "";
+  strcat(compiledTopic, mqttTopicValue);
+  strcat(compiledTopic, "/state/");
+  strcat(compiledTopic, switchIdent);
+
+  char compiledValue[28 + strlen(value) + strlen(rssi)] = "";
+  strcat(compiledValue,"{\"rssi\":\"");
+  strcat(compiledValue, rssi);
+  strcat(compiledValue,"\",\"buttonstate\":\"");
+  strcat(compiledValue, value);
+  strcat(compiledValue,"\"}");
+
+  mqttClient.publish(compiledTopic, compiledValue);
 }
 
 // Establish an MQTT connection, if connection fails this function will delay for 5 seconds and then return
 // Connection will be re-attempted at next execution of loop()
 void connectMqtt() {
   // Loop until we're reconnected
-  Serial.print("Attempting MQTT connection...");
+  Serial.println("Attempting MQTT connection...");
+
   // Create a random client ID
   String clientId = iotWebConf.getThingName();
   clientId += "-";
   clientId += String(random(0xffff), HEX);
+
+  Serial.println(clientId);
+
   // Attempt to connect
-  if (mqttClient.connect(clientId.c_str())) {
+  if (connectMqttOptions()) {
     Serial.println("connected");
     // Once connected, publish an announcement...
     char topicLevel1[] = "status";
     char topicLevel2[] = "connection";
     char messageValue[] = "connected";
-    publishMqtt(topicLevel1, topicLevel2, messageValue);
+    publishMqtt(messageValue);
   } else {
     Serial.print("MQTT Connection Failed:");
     Serial.print(mqttClient.state());
@@ -258,6 +272,22 @@ void connectMqtt() {
     // Wait 5 seconds before retrying
     iotWebConf.delay(5000);
   }
+}
+
+bool connectMqttOptions()
+{
+  bool result;
+  if (mqttUserPasswordValue[0] != '\0')
+  {
+    String userName = mqttUserNameValue;
+    String password = mqttUserPasswordValue;
+    result = mqttClient.connect(iotWebConf.getThingName(), userName.c_str(), password.c_str());
+  }
+  else
+  {
+    result = mqttClient.connect(iotWebConf.getThingName());
+  }
+  return result;
 }
 
 // Convert array of bytes into a string containing the HEX representation of the array
@@ -269,6 +299,15 @@ void bytesToHexString(byte array[], unsigned int len, char buffer[]) {
         buffer[i*2+1] = nib2  < 0xA ? '0' + nib2  : 'A' + nib2  - 0xA;
     }
     buffer[len*2] = '\0';
+}
+
+// Convert array of bytes into a string containing the HEX representation of the array
+void byteToHexString(byte mybyte, char buffer[]) {
+    byte nib1 = (mybyte >> 4) & 0x0F;
+    byte nib2 = (mybyte >> 0) & 0x0F;
+    buffer[0] = nib1  < 0xA ? '0' + nib1  : 'A' + nib1  - 0xA;
+    buffer[1] = nib2  < 0xA ? '0' + nib2  : 'A' + nib2  - 0xA;
+    buffer[2] = '\0';
 }
 
 // If configuration is saved in IOTWebConf, reboot the device
